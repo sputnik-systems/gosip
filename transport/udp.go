@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -53,14 +54,35 @@ func (p *udpProtocol) Listen(target *Target, options ...ListenOption) error {
 			fmt.Sprintf("%p", p),
 		}
 	}
-	// create UDP connection
-	udpConn, err := net.ListenUDP(p.network, laddr)
-	if err != nil {
-		return &ProtocolError{
-			err,
-			fmt.Sprintf("listen on %s %s address", p.Network(), laddr),
-			fmt.Sprintf("%p", p),
+
+	o := &ListenOptions{}
+	for _, opt := range options {
+		opt.ApplyListen(o)
+	}
+
+	var conn net.Conn
+	if o.Conn != nil {
+		// try to get provided connection
+		udpConn, ok := o.Conn.(*net.UDPConn)
+		if !ok {
+			return &ProtocolError{
+				errors.New("can't unwrap packet connection"),
+				"cast to udp connection",
+				fmt.Sprintf("%p", p),
+			}
 		}
+		conn = udpConn
+	} else {
+		// create UDP connection
+		udpConn, err := net.ListenUDP(p.network, laddr)
+		if err != nil {
+			return &ProtocolError{
+				err,
+				fmt.Sprintf("listen on %s %s address", p.Network(), laddr),
+				fmt.Sprintf("%p", p),
+			}
+		}
+		conn = udpConn
 	}
 
 	p.Log().Debugf("begin listening on %s %s", p.Network(), laddr)
@@ -68,12 +90,12 @@ func (p *udpProtocol) Listen(target *Target, options ...ListenOption) error {
 	// register new connection
 	// index by local address, TTL=0 - unlimited expiry time
 	key := ConnectionKey(fmt.Sprintf("%s:0.0.0.0:%d", p.network, laddr.Port))
-	conn := NewConnection(udpConn, key, p.network, p.Log())
-	err = p.connections.Put(conn, 0)
+	c := NewConnection(conn, key, p.network, p.Log())
+	err = p.connections.Put(c, 0)
 	if err != nil {
 		err = &ProtocolError{
 			Err:      err,
-			Op:       fmt.Sprintf("put %s connection to the pool", conn.Key()),
+			Op:       fmt.Sprintf("put %s connection to the pool", c.Key()),
 			ProtoPtr: fmt.Sprintf("%p", p),
 		}
 	}

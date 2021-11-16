@@ -68,6 +68,18 @@ func (o withLogger) ApplyProtocol(opts *ProtocolOptions) {
 	opts.Logger = o.logger
 }
 
+func WithPacketConn(conn net.PacketConn) ListenOption {
+	return withPacketConn{conn: conn}
+}
+
+type withPacketConn struct {
+	conn net.PacketConn
+}
+
+func (o withPacketConn) ApplyListen(opts *ListenOptions) {
+	opts.Conn = o.conn
+}
+
 func WithDNSResolver(resolver *net.Resolver) LayerOption {
 	return withDnsResolver{resolver}
 }
@@ -87,4 +99,5 @@ type ListenOption interface {
 
 type ListenOptions struct {
 	TLSConfig TLSConfig
+	Conn      net.PacketConn
 }
